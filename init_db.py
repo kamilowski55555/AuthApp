@@ -11,13 +11,12 @@ Base.metadata.create_all(bind=engine)
 def init_admin_user():
     db = SessionLocal()
     try:
-        # Check if admin user already exists
+
         existing_admin = UserDAO.get_by_username(db, "admin")
         if existing_admin:
             print("Admin user already exists!")
             return
 
-        # Create admin user with password "admin123" using DAO
         admin_user = UserDAO.create_user(
             db=db,
             username="admin",
@@ -37,5 +36,34 @@ def init_admin_user():
     finally:
         db.close()
 
+def init_normal_user():
+    db = SessionLocal()
+    try:
+
+        existing_admin = UserDAO.get_by_username(db, "user")
+        if existing_admin:
+            print("Admin user already exists!")
+            return
+
+        admin_user = UserDAO.create_user(
+            db=db,
+            username="user",
+            email="user@example.com",
+            password="user123",
+            roles=["ROLE_USER"]
+        )
+
+        print("✓ Normal user created successfully!")
+        print("  Username: user")
+        print("  Password: user123")
+        print("  Roles: ROLE_USER")
+
+    except Exception as e:
+        print(f"Error creating normal user: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
 if __name__ == "__main__":
     init_admin_user()
+    init_normal_user()

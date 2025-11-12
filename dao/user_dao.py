@@ -1,11 +1,16 @@
 from sqlalchemy.orm import Session
 from model.user import User
-from typing import Optional
+from typing import Optional, List
 import bcrypt
 
 
 class UserDAO:
     """Data Access Object for User operations"""
+
+    @staticmethod
+    def get_all(db: Session) -> List[User]:
+        """Get all users"""
+        return db.query(User).all()
 
     @staticmethod
     def get_by_username(db: Session, username: str) -> Optional[User]:
@@ -45,11 +50,8 @@ class UserDAO:
         """Verify user password"""
         return bcrypt.checkpw(password.encode('utf-8'), user.hashed_password.encode('utf-8'))
 
-
-
     @staticmethod
     def delete_user(db: Session, user: User) -> None:
         """Delete a user"""
         db.delete(user)
         db.commit()
-

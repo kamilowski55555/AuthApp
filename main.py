@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, Depends
 from datetime import datetime
+from typing import List
 from sqlalchemy.orm import Session
 from database import engine, get_db, Base
 from dto import LoginData, UserCreate, UserResponse, UserJWTResponse
@@ -25,23 +26,22 @@ def login(login_data: LoginData, db: Session = Depends(get_db)):
     token = create_access_token(username=user.username, roles=user.roles if user.roles else [])
     return {"access_token": token, "token_type": "bearer"}
 
-@app.get("/users", response_model=UserResponse)
-def get_user_details(payload: dict = Depends(verify_token), db: Session = Depends(get_db)):
-    """Get current user details from database"""
-    # Get username from JWT payload
-    username = payload.get("sub")
+@app.get("/users", response_model=List[UserResponse])
+def get_users(payload: dict = Depends(verify_token), db: Session = Depends(get_db)):
+    """Get all users from database"""
+    # Fetch all users from database
+    users = UserDAO.get_all(db)
 
-    # Fetch user from database
-    user = UserDAO.get_by_username(db, username)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    return UserResponse(
-        id=user.id,
-        username=user.username,
-        email=user.email,
-        roles=user.roles
-    )
+    # Convert to list of UserResponse DTOs
+    return [
+        UserResponse(
+            id=user.id,
+            username=user.username,
+            email=user.email,
+            roles=user.roles
+        )
+        for user in users
+    ]
 
 
 @app.post("/users", response_model=UserResponse)
