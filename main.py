@@ -1,153 +1,90 @@
-from fastapi import FastAPI, HTTPException, Depends, Header
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel
-from datetime import datetime, timedelta
-from typing import Optional, List
-import jwt
-import bcrypt
+from fastapi import FastAPI, HTTPException, Depends
+from datetime import datetime
 from sqlalchemy.orm import Session
 from database import engine, get_db, Base
-from models import User
+from dto import LoginData, UserCreate, UserResponse, UserJWTResponse
+from dao import UserDAO
+from security import create_access_token, verify_token, require_admin
 
-# Create tables
 Base.metadata.create_all(bind=engine)
-
 app = FastAPI()
-SECRET_KEY = "super_secret_key"  # w praktyce trzymane w zmiennych środowiskowych
-ALGORITHM = "HS256"
-security = HTTPBearer()
-
-
-class LoginData(BaseModel):
-    username: str
-    password: str
-
-
-class UserCreate(BaseModel):
-    username: str
-    email: str
-    password: str
-    roles: Optional[List[str]] = []
-
-
-class UserResponse(BaseModel):
-    id: int
-    username: str
-    email: str
-    roles: List[str]
-
-    class Config:
-        from_attributes = True
-
-
-class UserDetailsResponse(BaseModel):
-    username: str
-    roles: List[str]
-    iat: datetime
-    exp: datetime
-
-
-def verify_token(authorization: Optional[str] = Header(None)) -> dict:
-    """Verify JWT token from Authorization header"""
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Authorization header missing")
-
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Invalid authorization header format")
-
-    token = authorization.split("Bearer ")[1]
-
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token has expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-
-def require_admin(payload: dict = Depends(verify_token)) -> dict:
-    """Check if user has ROLE_ADMIN"""
-    roles = payload.get("roles", [])
-    if "ROLE_ADMIN" not in roles:
-        raise HTTPException(status_code=403, detail="Admin access required")
-    return payload
-
 
 @app.post("/login")
-def login(data: LoginData, db: Session = Depends(get_db)):
+def login(login_data: LoginData, db: Session = Depends(get_db)):
     """Authenticate user and return JWT token"""
-    username = data.username
-    password = data.password.encode('utf-8')
-
-    # Verify user exists in database
-    user = db.query(User).filter(User.username == username).first()
+    # Verify user exists in database using DAO
+    user = UserDAO.get_by_username(db, login_data.username)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    # Verify password
-    if not bcrypt.checkpw(password, user.hashed_password.encode('utf-8')):
+    # Verify password using DAO
+    if not UserDAO.verify_password(user, login_data.password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     # Create JWT token with roles
-    payload = {
-        "sub": username,
-        "roles": user.roles if user.roles else [],
-        "iat": datetime.utcnow(),
-        "exp": datetime.utcnow() + timedelta(hours=1)
-    }
-    token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+    token = create_access_token(username=user.username, roles=user.roles if user.roles else [])
     return {"access_token": token, "token_type": "bearer"}
+
+@app.get("/users", response_model=UserResponse)
+def get_user_details(payload: dict = Depends(verify_token), db: Session = Depends(get_db)):
+    """Get current user details from database"""
+    # Get username from JWT payload
+    username = payload.get("sub")
+
+    # Fetch user from database
+    user = UserDAO.get_by_username(db, username)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        roles=user.roles
+    )
 
 
 @app.post("/users", response_model=UserResponse)
 def create_user(
-    user_data: UserCreate,
+    user_create_dto: UserCreate,
     db: Session = Depends(get_db),
     payload: dict = Depends(require_admin)
 ):
     """Create a new user (admin only)"""
-    # Check if username already exists
-    existing_user = db.query(User).filter(User.username == user_data.username).first()
+    # Check if username already exists using DAO
+    existing_user = UserDAO.get_by_username(db, user_create_dto.username)
     if existing_user:
         raise HTTPException(status_code=400, detail="Username already exists")
 
-    # Check if email already exists
-    existing_email = db.query(User).filter(User.email == user_data.email).first()
+    existing_email = UserDAO.get_by_email(db, user_create_dto.email)
     if existing_email:
         raise HTTPException(status_code=400, detail="Email already exists")
 
-    # Hash password
-    hashed_password = bcrypt.hashpw(user_data.password.encode('utf-8'), bcrypt.gensalt())
-
-    # Create new user
-    new_user = User(
-        username=user_data.username,
-        email=user_data.email,
-        hashed_password=hashed_password.decode('utf-8'),
-        roles=user_data.roles
+    new_user = UserDAO.create_user(
+        db=db,
+        username=user_create_dto.username,
+        email=user_create_dto.email,
+        password=user_create_dto.password,
+        roles=user_create_dto.roles
     )
 
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
+    return UserResponse(
+        id=new_user.id,
+        username=new_user.username,
+        email=new_user.email,
+        roles=new_user.roles
+    )
 
-    return new_user
 
-
-@app.get("/user_details", response_model=UserDetailsResponse)
-def get_user_details(payload: dict = Depends(verify_token)):
-    """Get user details from JWT token payload"""
-    return {
-        "username": payload.get("sub"),
-        "roles": payload.get("roles", []),
-        "iat": datetime.fromtimestamp(payload.get("iat")),
-        "exp": datetime.fromtimestamp(payload.get("exp"))
-    }
-
-@app.get("/protected")
-def protected_route(payload: dict = Depends(verify_token)):
-    return {"message": f"Hello {payload['sub']}, you have access to this protected route!"}
+@app.get("/user_jwt", response_model=UserJWTResponse)
+def get_user_jwt_details(payload: dict = Depends(verify_token)):
+    """Get user details from JWT token payload only"""
+    return UserJWTResponse(
+        username=payload.get("sub"),
+        roles=payload.get("roles", []),
+        iat=datetime.fromtimestamp(payload.get("iat")),
+        exp=datetime.fromtimestamp(payload.get("exp"))
+    )
 
 
 if __name__ == "__main__":
