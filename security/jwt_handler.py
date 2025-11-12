@@ -8,7 +8,7 @@ ALGORITHM = "HS256"
 
 
 def create_access_token(username: str, roles: list) -> str:
-    """Create JWT access token for user"""
+
     payload = {
         "sub": username,
         "roles": roles if roles else [],
@@ -20,7 +20,7 @@ def create_access_token(username: str, roles: list) -> str:
 
 
 def verify_token(authorization: Optional[str] = Header(None)) -> dict:
-    """Verify JWT token from Authorization header"""
+
     if not authorization:
         raise HTTPException(status_code=401, detail="Authorization header missing")
 
@@ -39,7 +39,7 @@ def verify_token(authorization: Optional[str] = Header(None)) -> dict:
 
 
 def require_admin(payload: dict = Depends(verify_token)) -> dict:
-    """Check if user has ROLE_ADMIN"""
+
     roles = payload.get("roles", [])
     if "ROLE_ADMIN" not in roles:
         raise HTTPException(status_code=403, detail="Admin access required")

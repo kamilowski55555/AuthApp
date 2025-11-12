@@ -3,7 +3,7 @@ from typing import List
 
 
 class UserResponse(BaseModel):
-    """DTO for user response"""
+
     id: int
     username: str
     email: str

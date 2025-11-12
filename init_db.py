@@ -5,7 +5,7 @@ Run this script once to create the admin user in the database
 from database import SessionLocal, engine, Base
 from dao import UserDAO
 
-# Create tables
+
 Base.metadata.create_all(bind=engine)
 
 def init_admin_user():

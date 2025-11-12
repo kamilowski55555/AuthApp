@@ -4,7 +4,7 @@ from datetime import datetime
 
 
 class UserJWTResponse(BaseModel):
-    """DTO for user details from JWT token"""
+
     username: str
     roles: List[str]
     iat: datetime

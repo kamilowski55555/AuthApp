@@ -12,27 +12,23 @@ app = FastAPI()
 
 @app.post("/login")
 def login(login_data: LoginData, db: Session = Depends(get_db)):
-    """Authenticate user and return JWT token"""
-    # Verify user exists in database using DAO
+
     user = UserDAO.get_by_username(db, login_data.username)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    # Verify password using DAO
     if not UserDAO.verify_password(user, login_data.password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    # Create JWT token with roles
+
     token = create_access_token(username=user.username, roles=user.roles if user.roles else [])
     return {"access_token": token, "token_type": "bearer"}
 
 @app.get("/users", response_model=List[UserResponse])
 def get_users(payload: dict = Depends(verify_token), db: Session = Depends(get_db)):
-    """Get all users from database"""
-    # Fetch all users from database
+
     users = UserDAO.get_all(db)
 
-    # Convert to list of UserResponse DTOs
     return [
         UserResponse(
             id=user.id,
@@ -50,8 +46,7 @@ def create_user(
     db: Session = Depends(get_db),
     payload: dict = Depends(require_admin)
 ):
-    """Create a new user (admin only)"""
-    # Check if username already exists using DAO
+
     existing_user = UserDAO.get_by_username(db, user_create_dto.username)
     if existing_user:
         raise HTTPException(status_code=400, detail="Username already exists")
@@ -78,7 +73,6 @@ def create_user(
 
 @app.get("/user_jwt", response_model=UserJWTResponse)
 def get_user_jwt_details(payload: dict = Depends(verify_token)):
-    """Get user details from JWT token payload only"""
     return UserJWTResponse(
         username=payload.get("sub"),
         roles=payload.get("roles", []),
