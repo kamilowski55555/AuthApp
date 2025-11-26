@@ -1,84 +1,21 @@
-from fastapi import FastAPI, HTTPException, Depends
-from datetime import datetime
-from typing import List
-from sqlalchemy.orm import Session
-from database import engine, get_db, Base
-from dto import LoginData, UserCreate, UserResponse, UserJWTResponse
-from dao import UserDAO
-from security import create_access_token, verify_token, require_admin
+from fastapi import FastAPI
+from db.database import engine, Base
+from api import auth_controller, movie_controller, link_controller, rating_controller, tag_controller
 
 Base.metadata.create_all(bind=engine)
-app = FastAPI()
+app = FastAPI(title="MovieLens API")
 
-@app.post("/login")
-def login(login_data: LoginData, db: Session = Depends(get_db)):
-
-    user = UserDAO.get_by_username(db, login_data.username)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-
-    if not UserDAO.verify_password(user, login_data.password):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+# Include all routers
+app.include_router(auth_controller.router)
+app.include_router(movie_controller.router)
+app.include_router(link_controller.router)
+app.include_router(rating_controller.router)
+app.include_router(tag_controller.router)
 
 
-    token = create_access_token(username=user.username, roles=user.roles if user.roles else [])
-    return {"access_token": token, "token_type": "bearer"}
-
-@app.get("/users", response_model=List[UserResponse])
-def get_users(payload: dict = Depends(verify_token), db: Session = Depends(get_db)):
-
-    users = UserDAO.get_all(db)
-
-    return [
-        UserResponse(
-            id=user.id,
-            username=user.username,
-            email=user.email,
-            roles=user.roles
-        )
-        for user in users
-    ]
-
-
-@app.post("/users", response_model=UserResponse)
-def create_user(
-    user_create_dto: UserCreate,
-    db: Session = Depends(get_db),
-    payload: dict = Depends(require_admin)
-):
-
-    existing_user = UserDAO.get_by_username(db, user_create_dto.username)
-    if existing_user:
-        raise HTTPException(status_code=400, detail="Username already exists")
-
-    existing_email = UserDAO.get_by_email(db, user_create_dto.email)
-    if existing_email:
-        raise HTTPException(status_code=400, detail="Email already exists")
-
-    new_user = UserDAO.create_user(
-        db=db,
-        username=user_create_dto.username,
-        email=user_create_dto.email,
-        password=user_create_dto.password,
-        roles=user_create_dto.roles
-    )
-
-    return UserResponse(
-        id=new_user.id,
-        username=new_user.username,
-        email=new_user.email,
-        roles=new_user.roles
-    )
-
-
-@app.get("/user_jwt", response_model=UserJWTResponse)
-def get_user_jwt_details(payload: dict = Depends(verify_token)):
-    return UserJWTResponse(
-        username=payload.get("sub"),
-        roles=payload.get("roles", []),
-        iat=datetime.fromtimestamp(payload.get("iat")),
-        exp=datetime.fromtimestamp(payload.get("exp"))
-    )
+@app.get("/")
+def hello() -> dict:
+    return {"hello": "world"}
 
 
 if __name__ == "__main__":
