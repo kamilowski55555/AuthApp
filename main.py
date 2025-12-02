@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from db.database import engine, Base
-from api import auth_controller, movie_controller, link_controller, rating_controller, tag_controller
+from api import auth_controller, movie_controller, link_controller, rating_controller, tag_controller, \
+    image_analysis_controller
 
 Base.metadata.create_all(bind=engine)
 app = FastAPI(title="MovieLens API")
@@ -11,6 +12,7 @@ app.include_router(movie_controller.router)
 app.include_router(link_controller.router)
 app.include_router(rating_controller.router)
 app.include_router(tag_controller.router)
+app.include_router(image_analysis_controller.router)
 
 
 @app.get("/")
